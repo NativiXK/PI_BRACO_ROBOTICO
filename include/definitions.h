@@ -3,28 +3,28 @@
 #include <stdbool.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/"
 #include "driver/gpio.h"
-#include <ServoEasing.hpp>
+#include <ESP32Servo.h>
 
 // Pinout definitions
-#define LED_STATUS GPIO_NUM_2
-#define SERVO_J1_PIN GPIO_NUM_18    // Pino Servo do tronco
-#define SERVO_J2_PIN GPIO_NUM_19    // Pino Servo do braço
-#define SERVO_J3_PIN GPIO_NUM_21    // Pino Servo do cotovelo
-#define SERVO_CLAW_PIN GPIO_NUM_5   // Pino Servo da garra
+#define LED_STATUS 2
+#define SERVO_J1_PIN 18    // Pino Servo do tronco
+#define SERVO_J2_PIN 19    // Pino Servo do braço
+#define SERVO_J3_PIN 21    // Pino Servo do cotovelo
+#define SERVO_CLAW_PIN 5   // Pino Servo da garra
   // Buttons
-#define B1_Start GPIO_NUM_26        // Botão para iniciar o programa
-#define B2_Stop GPIO_NUM_27         // Botão para parar o programa
+#define B1_Start 26        // Botão para iniciar o programa
+#define B2_Stop 27         // Botão para parar o programa
 
-#define POT_J1 GPIO_NUM_34          
-#define POT_J2 GPIO_NUM_35          
-#define POT_J3 GPIO_NUM_32          
+#define POT_J1 34          
+#define POT_J2 35          
+#define POT_J3 32          
 
 // RTOS TASKS DEFINITIONS
 #define UPDATE_SERVO_MS 20          // Período de atualização da posição dos servos
-#define UPDATE_STATUS_MS 50
-#define UPDATE_IO_MAP_MS 10
+#define UPDATE_STATUS_MS 50         // Período de atualização do status
+#define UPDATE_IO_MAP_MS 10         // Período de atualização do mapa de IOs
+#define UPDATE_CALC_MS 15           // Período de atualização dos cálculos
 
 // MOTION DEFINITION
 #define DEGREES_OF_FREEDOM 3        // Graus de liberdade do robo menos a garra
