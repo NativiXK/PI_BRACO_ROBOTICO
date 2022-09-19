@@ -178,12 +178,22 @@ void UPDATE_SERVO_TASK(void *ServoParameters)
     int pos_diff = abs(joint->MoveTo - joint->Actual);
 
     // Check if needed to move
-    if (pos_diff > 0.5)
+    if (pos_diff > 1)
     {
-      // Calculate step to update servo, using easing function from servoEasing lib
-      int step = (joint->MoveTo - joint->Actual) > 0 ? (joint->MoveTo - joint->Actual)
-       : 0;
-      joint->Motor.write(0);
+      int diff = (joint->MoveTo - joint->Actual);
+
+      /* Calculate step to update servo, using easing function from servoEasing lib
+          Velocity = °/s -> °/1000mS
+          Position = °
+          Update_interval = 20mS
+          
+
+      */
+
+      int step = diff > 0 ? 1: -1;
+
+      joint->Actual = joint->Actual + step;
+      joint->Motor.write(joint->Actual);
     }
 
     vTaskDelay(UPDATE_SERVO_MS / portTICK_PERIOD_MS);
@@ -213,8 +223,8 @@ void CALCULATE_TASK(void *pvParameter)
   for (;;)
   {
       Servos[0].MoveTo = IOMirror.AI_INPUT_1;
-      Servos[1].MoveTo = IOMirror.AI_INPUT_1;
-      Servos[2].MoveTo = IOMirror.AI_INPUT_1;
+      Servos[1].MoveTo = IOMirror.AI_INPUT_2;
+      Servos[2].MoveTo = IOMirror.AI_INPUT_3;
 
   }
 }
