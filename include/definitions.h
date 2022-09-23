@@ -1,11 +1,3 @@
-#include <Arduino.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "driver/gpio.h"
-#include <ESP32Servo.h>
-
 // Pinout definitions
 #define LED_STATUS 2
 #define SERVO_J1_PIN 18    // Pino Servo do tronco
@@ -15,6 +7,8 @@
   // Buttons
 #define B1_Start 26        // Botão para iniciar o programa
 #define B2_Stop 27         // Botão para parar o programa
+#define B3_Close_Claw 14   // Botão para fechar a garra
+#define B4_Open_Claw 12    // Botão para abrir a garra
 
 #define POT_J1 34          
 #define POT_J2 35          
@@ -27,11 +21,12 @@
 #define UPDATE_CALC_MS 15           // Período de atualização dos cálculos
 
 // MOTION DEFINITION
+#define ENABLE_EASE_CUBIC
 #define DEGREES_OF_FREEDOM 3        // Graus de liberdade do robo menos a garra
   // Positions
-#define START_POS_J1 0              // Posição inicial do servo J1
-#define START_POS_J2 0              // Posiçao inicial do servo J2
-#define START_POS_J3 0              // Posição inicial do servo j3
+#define START_POS_J1 90              // Posição inicial do servo J1
+#define START_POS_J2 90              // Posiçao inicial do servo J2
+#define START_POS_J3 90              // Posição inicial do servo j3
 #define START_POS_CLAW 180          // Posição inicial da garra (180 - Aberta)
 
 #define MAX_POS_J1 180              // Posição máxima do servo J1
@@ -45,7 +40,7 @@
 #define MIN_POS_CLAW 0              // Posição mínima do servo J1
 
   // Velocities
-#define VEL_J1 20                   // Velocidade do servo J1 (°/s)
-#define VEL_J2 20                   // Velocidade do servo J2 (°/s)
-#define VEL_J3 20                   // Velocidade do servo J3 (°/s)
-#define VEL_CLAW 20                 // Velocidade da garra (°/s)
+#define VEL_J1 50                   // Velocidade do servo J1 (°/s)
+#define VEL_J2 50                   // Velocidade do servo J2 (°/s)
+#define VEL_J3 50                   // Velocidade do servo J3 (°/s)
+#define VEL_CLAW 50                 // Velocidade da garra (°/s)

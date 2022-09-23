@@ -1,4 +1,12 @@
+#include <Arduino.h>
 #include <definitions.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+#include <ESP32Servo.h>
+#include "ServoEasing.hpp"
 
 // Types definitions
 typedef struct led_task_parameters_t
@@ -17,7 +25,8 @@ typedef struct MotionGear
   byte Min_Pos;               // Posição miníma do servo
   byte Start_Pos;             // Posição inicial do servo
   byte Pin;                   // Pino de conexão do servo
-  Servo Motor;
+  ServoEasing Motor;
+  char Name[5];              // Nome do eixo
 
 } MotionGear;
 
@@ -82,10 +91,9 @@ void setup() {
   // Inicializa fila de movimentos
 
   // Inicializa todas as entradas e saídas
-
+  Start_IOs();
   // Inicializa todos os servos na biblioteca ServoEasing
   Start_Servos();
-
   // Inicializa display na biblioteca TFT_esPI
 
   // Inicializa Tasks
@@ -95,6 +103,15 @@ void setup() {
 
 void loop() {}
 
+void Start_IOs(void)
+{
+  pinMode(B1_Start, INPUT);
+  pinMode(B2_Stop, INPUT);
+  pinMode(B3_Close_Claw, INPUT);
+  pinMode(B4_Open_Claw, INPUT);
+
+}
+
 void Start_Servos(void)
 {
   // Initialize Motion gear
@@ -103,12 +120,18 @@ void Start_Servos(void)
   Servos[2] = {0, 0, VEL_J3, MAX_POS_J3, MIN_POS_J3, START_POS_J3, SERVO_J3_PIN};
   Servos[3] = {0, 0, VEL_CLAW, MAX_POS_CLAW, MIN_POS_CLAW, START_POS_CLAW, SERVO_CLAW_PIN};
 
+  strcpy(Servos[0].Name, "J1");
+  strcpy(Servos[1].Name, "J2");
+  strcpy(Servos[2].Name, "J3");
+  strcpy(Servos[3].Name, "CLAW");
+
   // Attach servos and move them to start position
   for (int i = 0; i < DEGREES_OF_FREEDOM + 1; i++)
   {
     MotionGear *joint = &Servos[i];
-    joint->Motor.attach(joint->Pin, map(joint->Min_Pos, 0, 180, 544, 2400), map(joint->Max_Pos, 0, 180, 544, 2400));
-    joint->Motor.write(joint->Start_Pos);
+    joint->Motor.setEasingType(EASE_CUBIC_IN_OUT);
+    joint->Motor.setSpeed(joint->Velocity);
+    joint->Motor.attach(joint->Pin, joint->Start_Pos);
   }
 
 }
@@ -142,25 +165,20 @@ void Start_Tasks(void)
     NULL// out pointer to task handle
   );
 
-  // Create a dedicated task to update each servo
-  for (int i = 0; i <= DEGREES_OF_FREEDOM + 1; i++)
+  //Create a dedicated task to update each servo
+  for (int i = 0; i < DEGREES_OF_FREEDOM + 1; i++)
   {
 
     xTaskCreate(
       &UPDATE_SERVO_TASK, // task function
-      "SERVO_TASK", // task name
+      strcat(Servos[i].Name, " SERVO_TASK"), // task name
       1024, // stack size in words
       &Servos[i], // pointer to parameters
-      3, // priority
+      4, // priority
       NULL// out pointer to task handle
     );
+
   }
-
-}
-
-void Start_IOs(void)
-{
-  
 
 }
 
@@ -173,30 +191,22 @@ void UPDATE_SERVO_TASK(void *ServoParameters)
 
     MotionGear *joint = (MotionGear *) ServoParameters;
 
-    // Serial.println("Update servo " + String(joint->Pin));
-
-    int pos_diff = abs(joint->MoveTo - joint->Actual);
-
-    // Check if needed to move
-    if (pos_diff > 1)
+    if (joint->Actual != joint->MoveTo)
     {
-      int diff = (joint->MoveTo - joint->Actual);
-
-      /* Calculate step to update servo, using easing function from servoEasing lib
-          Velocity = °/s -> °/1000mS
-          Position = °
-          Update_interval = 20mS
-          
-
-      */
-
-      int step = diff > 0 ? 1: -1;
-
-      joint->Actual = joint->Actual + step;
-      joint->Motor.write(joint->Actual);
+      joint->Motor.startEaseTo(joint->MoveTo, joint->Velocity, DO_NOT_START_UPDATE_BY_INTERRUPT);
+    }
+    
+    do
+    {
+      // Serial.println(strcat("UPDATE ", joint->Name));
+      vTaskDelay(UPDATE_SERVO_MS / portTICK_PERIOD_MS);
+    } while(!joint->Motor.update());
+   
+    if (joint->Motor.isMoving())
+    {
+      joint->Actual = joint->MoveTo;
     }
 
-    vTaskDelay(UPDATE_SERVO_MS / portTICK_PERIOD_MS);
   }
 }
 
@@ -205,14 +215,19 @@ void UPDATE_IO_MAP_TASK(void *pvParameter)
   for (;;)
   {
     IOMirror.AI_INPUT_1 = map(analogRead(POT_J1), 0, 4095, 0, 180);
-    Serial.print("J1: ");
-    Serial.print(IOMirror.AI_INPUT_1);
+    // Serial.print("J1: ");
+    // Serial.print(IOMirror.AI_INPUT_1);
     IOMirror.AI_INPUT_2 = map(analogRead(POT_J2), 0, 4095, 0, 180);
-    Serial.print("\tJ2: ");
-    Serial.print(IOMirror.AI_INPUT_2);
+    // Serial.print("\tJ2: ");
+    // Serial.print(IOMirror.AI_INPUT_2);
     IOMirror.AI_INPUT_3 = map(analogRead(POT_J3), 0, 4095, 0, 180);
-    Serial.print("\tJ3: ");
-    Serial.println(IOMirror.AI_INPUT_3);
+    // Serial.print("\tJ3: ");
+    // Serial.println(IOMirror.AI_INPUT_3);
+
+    IOMirror.IN.IO_1 = digitalRead(B1_Start);
+    IOMirror.IN.IO_2 = digitalRead(B2_Stop);
+    IOMirror.IN.IO_3 = digitalRead(B3_Close_Claw);
+    IOMirror.IN.IO_4 = digitalRead(B4_Open_Claw);
 
     vTaskDelay(UPDATE_IO_MAP_MS / portTICK_PERIOD_MS);
   }
@@ -222,9 +237,24 @@ void CALCULATE_TASK(void *pvParameter)
 {
   for (;;)
   {
+      // Serial.println("Calculate");
       Servos[0].MoveTo = IOMirror.AI_INPUT_1;
       Servos[1].MoveTo = IOMirror.AI_INPUT_2;
       Servos[2].MoveTo = IOMirror.AI_INPUT_3;
 
+      // Verifica comando para fechar garra
+      if (IOMirror.IN.IO_3)
+      {
+        Serial.println("Close");
+        Servos[3].MoveTo = 0;
+      }
+      // Verifica comando para abrir a garra
+      if (IOMirror.IN.IO_4)
+      {
+        Serial.println("Open");
+        Servos[3].MoveTo = 180;
+      }
+
+      vTaskDelay(UPDATE_CALC_MS / portTICK_PERIOD_MS);
   }
 }
