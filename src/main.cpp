@@ -58,15 +58,13 @@ typedef struct IOMemory
 // Global variables
 static led_task_parameters_t led_status = {LED_STATUS, 500};
 
-
 /*
   MotionGear
   Servos[0] -> Tronco J1
   Servos[1] -> Braco J2
   Servos[2] -> Cotovelo J3
-  Servos[3] -> Garra
 */
-MotionGear Servos[DEGREES_OF_FREEDOM + 1];
+MotionGear Servos[DEGREES_OF_FREEDOM];
 
 /*
   IO Mapping
@@ -79,12 +77,15 @@ MotionGear Servos[DEGREES_OF_FREEDOM + 1];
 void Start_Servos(void);
 void Start_Tasks(void);
 void Start_IOs(void);
+int Saturate(int in, int max, int min);
 
 // Tasks prototype
 void STATUS_TASK(void *pvParameter);
 void UPDATE_SERVO_TASK(void *ServoParameters);
 void UPDATE_IO_MAP_TASK(void *pvParameter);
 void CALCULATE_TASK(void *pvParameter);
+
+// FUNCTIONS CODE
 
 void setup() {
   Serial.begin(115200);
@@ -105,10 +106,15 @@ void loop() {}
 
 void Start_IOs(void)
 {
+  // Declare input pins mode
   pinMode(B1_Start, INPUT);
   pinMode(B2_Stop, INPUT);
   pinMode(B3_Close_Claw, INPUT);
   pinMode(B4_Open_Claw, INPUT);
+
+  // Declare output pins mode
+  // Servo pins are automatically declared as output inside servoeasing library
+  pinMode(CLAW_PIN, OUTPUT);
 
 }
 
@@ -118,15 +124,13 @@ void Start_Servos(void)
   Servos[0] = {0, 0, VEL_J1, MAX_POS_J1, MIN_POS_J1, START_POS_J1, SERVO_J1_PIN};
   Servos[1] = {0, 0, VEL_J2, MAX_POS_J2, MIN_POS_J2, START_POS_J2, SERVO_J2_PIN};
   Servos[2] = {0, 0, VEL_J3, MAX_POS_J3, MIN_POS_J3, START_POS_J3, SERVO_J3_PIN};
-  Servos[3] = {0, 0, VEL_CLAW, MAX_POS_CLAW, MIN_POS_CLAW, START_POS_CLAW, SERVO_CLAW_PIN};
 
   strcpy(Servos[0].Name, "J1");
   strcpy(Servos[1].Name, "J2");
   strcpy(Servos[2].Name, "J3");
-  strcpy(Servos[3].Name, "CLAW");
 
   // Attach servos and move them to start position
-  for (int i = 0; i < DEGREES_OF_FREEDOM + 1; i++)
+  for (int i = 0; i < DEGREES_OF_FREEDOM; i++)
   {
     MotionGear *joint = &Servos[i];
     joint->Motor.setEasingType(EASE_CUBIC_IN_OUT);
@@ -166,7 +170,7 @@ void Start_Tasks(void)
   );
 
   //Create a dedicated task to update each servo
-  for (int i = 0; i < DEGREES_OF_FREEDOM + 1; i++)
+  for (int i = 0; i < DEGREES_OF_FREEDOM; i++)
   {
 
     xTaskCreate(
@@ -182,10 +186,31 @@ void Start_Tasks(void)
 
 }
 
+int Saturate (int in, int max, int min)
+{ 
+  //Saturate input in if above max limit or below min limit
+
+  int out = in;
+
+  if (in >= max)
+  {
+    out = max;
+  }
+
+  if (in <= min)
+  {
+    out = min;
+  }
+
+  return out;
+}
+
 // This task will receive a MotionGear parameter with all parameters related to the joint
 // and update the servo position till reach MoveTo position
 void UPDATE_SERVO_TASK(void *ServoParameters)
 {
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+
   for(;;) // Forever loop
   {
 
@@ -199,7 +224,7 @@ void UPDATE_SERVO_TASK(void *ServoParameters)
     do
     {
       // Serial.println(strcat("UPDATE ", joint->Name));
-      vTaskDelay(UPDATE_SERVO_MS / portTICK_PERIOD_MS);
+      xTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(UPDATE_SERVO_MS));
     } while(!joint->Motor.update());
    
     if (joint->Motor.isMoving())
@@ -212,6 +237,8 @@ void UPDATE_SERVO_TASK(void *ServoParameters)
 
 void UPDATE_IO_MAP_TASK(void *pvParameter)
 {
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+
   for (;;)
   {
     IOMirror.AI_INPUT_1 = map(analogRead(POT_J1), 0, 4095, 0, 180);
@@ -224,37 +251,49 @@ void UPDATE_IO_MAP_TASK(void *pvParameter)
     // Serial.print("\tJ3: ");
     // Serial.println(IOMirror.AI_INPUT_3);
 
+    // Read digital inputs
     IOMirror.IN.IO_1 = digitalRead(B1_Start);
     IOMirror.IN.IO_2 = digitalRead(B2_Stop);
     IOMirror.IN.IO_3 = digitalRead(B3_Close_Claw);
     IOMirror.IN.IO_4 = digitalRead(B4_Open_Claw);
 
-    vTaskDelay(UPDATE_IO_MAP_MS / portTICK_PERIOD_MS);
+    // Write digital outputs
+    digitalWrite(CLAW_PIN ,IOMirror.OUT.IO_1);
+
+    xTaskDelayUntil(&xLastWakeTime ,pdMS_TO_TICKS(UPDATE_IO_MAP_MS));
   }
 }
 
 void CALCULATE_TASK(void *pvParameter)
 {
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+
   for (;;)
   {
       // Serial.println("Calculate");
+      // Update each servo target
       Servos[0].MoveTo = IOMirror.AI_INPUT_1;
       Servos[1].MoveTo = IOMirror.AI_INPUT_2;
       Servos[2].MoveTo = IOMirror.AI_INPUT_3;
+
+      // Saturate each servo target based on its limits
+      Servos[0].MoveTo = Saturate(Servos [0].MoveTo, MAX_POS_J1, MIN_POS_J1);
+      Servos[0].MoveTo = Saturate(Servos[0].MoveTo, MAX_POS_J1, MIN_POS_J1);
+      Servos[0].MoveTo = Saturate(Servos[0].MoveTo, MAX_POS_J1, MIN_POS_J1);
 
       // Verifica comando para fechar garra
       if (IOMirror.IN.IO_3)
       {
         Serial.println("Close");
-        Servos[3].MoveTo = 0;
+        IOMirror.OUT.IO_1 = False;
       }
       // Verifica comando para abrir a garra
       if (IOMirror.IN.IO_4)
       {
         Serial.println("Open");
-        Servos[3].MoveTo = 180;
+        IOMirror.OUT.IO_1 = True;
       }
 
-      vTaskDelay(UPDATE_CALC_MS / portTICK_PERIOD_MS);
+      xTaskDelayUntil(&xLastWakeTime ,pdMS_TO_TICKS(UPDATE_CALC_MS));
   }
 }
