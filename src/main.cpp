@@ -9,6 +9,13 @@
 #include "ServoEasing.hpp"
 
 // Types definitions
+typedef enum 
+{
+  MOVE_INSTANT,
+  MOVE_EASING,
+  AXIS_DISABLED
+} Operation_mode;
+
 typedef struct led_task_parameters_t
 {
   byte led_gpio;
@@ -25,8 +32,9 @@ typedef struct MotionGear
   byte Min_Pos;               // Posição miníma do servo
   byte Start_Pos;             // Posição inicial do servo
   byte Pin;                   // Pino de conexão do servo
+  Operation_mode op_mode;     // Servo operation mode
   ServoEasing Motor;
-  char Name[5];              // Nome do eixo
+  char Name[5];               // Nome do eixo
 
 } MotionGear;
 
@@ -100,6 +108,7 @@ void setup() {
   // Inicializa Tasks
   Start_Tasks();
 
+  Serial.println("Initialized");
 }
 
 void loop() {}
@@ -136,6 +145,8 @@ void Start_Servos(void)
     joint->Motor.setEasingType(EASE_CUBIC_IN_OUT);
     joint->Motor.setSpeed(joint->Velocity);
     joint->Motor.attach(joint->Pin, joint->Start_Pos);
+
+    joint->op_mode = MOVE_INSTANT;
   }
 
 }
@@ -178,7 +189,7 @@ void Start_Tasks(void)
       strcat(Servos[i].Name, " SERVO_TASK"), // task name
       1024, // stack size in words
       &Servos[i], // pointer to parameters
-      4, // priority
+      6, // priority
       NULL// out pointer to task handle
     );
 
@@ -216,21 +227,47 @@ void UPDATE_SERVO_TASK(void *ServoParameters)
 
     MotionGear *joint = (MotionGear *) ServoParameters;
 
-    if (joint->Actual != joint->MoveTo)
+    switch(joint->op_mode)
     {
-      joint->Motor.startEaseTo(joint->MoveTo, joint->Velocity, DO_NOT_START_UPDATE_BY_INTERRUPT);
+      case(MOVE_EASING): // Used to move in a set of movements
+        if (joint->Actual != joint->MoveTo)
+        {
+          joint->Motor.startEaseTo(joint->MoveTo, joint->Velocity, DO_NOT_START_UPDATE_BY_INTERRUPT);
+        }
+        
+        do
+        {
+          // Serial.println(strcat("UPDATE ", joint->Name));
+          xTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(UPDATE_SERVO_MS));
+        } while(!joint->Motor.update());
+      
+        if (joint->Motor.isMoving())
+        {
+          joint->Actual = joint->MoveTo;
+        }
+
+        break;
+
+      case(MOVE_INSTANT): // Used to move acordingly to potentiometer mapping
+        if (joint->Actual != joint->MoveTo)
+        {
+          joint->Motor.startEaseTo(joint->MoveTo, 450, DO_NOT_START_UPDATE_BY_INTERRUPT);
+        }
+
+        do
+        {
+          // Serial.println(strcat("UPDATE ", joint->Name));
+          xTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(UPDATE_SERVO_MS));
+        } while(!joint->Motor.update());
+
+        if (joint->Motor.isMoving())
+        {
+          joint->Actual = joint->MoveTo;
+        }
+        break;
     }
+
     
-    do
-    {
-      // Serial.println(strcat("UPDATE ", joint->Name));
-      xTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(UPDATE_SERVO_MS));
-    } while(!joint->Motor.update());
-   
-    if (joint->Motor.isMoving())
-    {
-      joint->Actual = joint->MoveTo;
-    }
 
   }
 }
@@ -267,9 +304,48 @@ void UPDATE_IO_MAP_TASK(void *pvParameter)
 void CALCULATE_TASK(void *pvParameter)
 {
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  String command;
+  int menu_state;
 
   for (;;)
   {
+      // Serial data available
+      if (Serial.available() > 0)
+      {
+        command = Serial.readString();
+        command.trim();
+        Serial.println(command);
+        if (command == "OP_MODE")
+        {
+          Serial.println("Input the desired operation mode:\n 0 - MOVE_INSTANT\n 1 - MOVE_EASING\n 2 - AXIS_DISABLED");
+          menu_state = 1;
+        }
+
+        if (command == "0" && menu_state == 1)
+        {
+          Servos[0].op_mode = MOVE_INSTANT;
+          Servos[1].op_mode = MOVE_INSTANT;
+          Servos[2].op_mode = MOVE_INSTANT;
+          menu_state = 0;
+        }
+
+        if (command == "1" && menu_state == 1)
+        {
+          Servos[0].op_mode = MOVE_EASING;
+          Servos[1].op_mode = MOVE_EASING;
+          Servos[2].op_mode = MOVE_EASING;
+          menu_state = 0;
+        }
+
+        if (command == "2" && menu_state == 1)
+        {
+          Servos[0].op_mode = AXIS_DISABLED;
+          Servos[1].op_mode = AXIS_DISABLED;
+          Servos[2].op_mode = AXIS_DISABLED;
+          menu_state = 0;
+        }
+      }
+
       // Serial.println("Calculate");
       // Update each servo target
       Servos[0].MoveTo = IOMirror.AI_INPUT_1;

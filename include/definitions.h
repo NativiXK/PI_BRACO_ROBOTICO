@@ -28,6 +28,9 @@
 // MOTION DEFINITION
 #define ENABLE_EASE_CUBIC
 #define DEGREES_OF_FREEDOM 3        // Graus de liberdade do robo menos a garra
+#define INITIAL_OP_MODE_J1 0        // 0 = MOVE_INSTANT | 1 = MOVE_EASING | 2 = DISABLED
+#define INITIAL_OP_MODE_J2 0        // 0 = MOVE_INSTANT | 1 = MOVE_EASING | 2 = DISABLED
+#define INITIAL_OP_MODE_J3 0        // 0 = MOVE_INSTANT | 1 = MOVE_EASING | 2 = DISABLED
 
   // Positions
 #define START_POS_J1 90              // Posição inicial do servo J1
